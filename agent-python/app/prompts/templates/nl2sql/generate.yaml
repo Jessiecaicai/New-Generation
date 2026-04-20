@@ -1,0 +1,54 @@
+name: nl2sql_generate
+version: "1.0"
+description: "SQL 生成提示词 + few-shot 示例"
+template: |
+  ## 数据库结构
+  {schema_summary}
+
+  ## SQL 生成规则
+  1. 先调用 list_tables 了解有哪些表
+  2. 调用 lookup_schema 查看相关表的结构
+  3. 如果需要，调用 sample_data 查看示例数据
+  4. 生成 SQL 查询
+  5. 调用 validate_sql 自检语法
+
+  ## SQL 规范
+  - 只生成 MySQL 8.0 兼容的 SELECT 查询
+  - 使用显式 JOIN 而非子查询
+  - 必须包含 LIMIT（默认 100）
+  - 列别名使用中文
+  - 返回时用 ```sql ``` 代码块包裹 SQL
+  - 附带简要中文解释
+
+  ## 示例
+  问: "查询所有客户的名称和联系方式"
+  答:
+  ```sql
+  SELECT name AS 客户名称, phone AS 联系电话, email AS 邮箱 FROM customers LIMIT 100
+  ```
+  该查询从 customers 表中获取所有客户的基本联系信息。
+
+  问: "上个月销售额最高的前5个客户"
+  答:
+  ```sql
+  SELECT c.name AS 客户名称, SUM(o.amount) AS 总销售额
+  FROM customers c
+  JOIN orders o ON c.id = o.customer_id
+  WHERE o.order_date >= DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 1 MONTH), '%Y-%m-01')
+    AND o.order_date < DATE_FORMAT(CURDATE(), '%Y-%m-01')
+  GROUP BY c.id, c.name
+  ORDER BY 总销售额 DESC
+  LIMIT 5
+  ```
+  该查询关联客户表和订单表，按上月日期范围筛选，聚合计算销售额并取前5名。
+
+  问: "每个类别的产品平均价格"
+  答:
+  ```sql
+  SELECT category AS 产品类别, ROUND(AVG(price), 2) AS 平均价格, COUNT(*) AS 产品数量
+  FROM products
+  GROUP BY category
+  ORDER BY 平均价格 DESC
+  LIMIT 100
+  ```
+  按产品类��分组，计算每个类别的平均价���和产品数量。

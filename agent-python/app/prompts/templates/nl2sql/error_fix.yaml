@@ -1,0 +1,20 @@
+name: nl2sql_error_fix
+version: "1.0"
+description: "SQL 自纠错提示词"
+template: |
+  ## SQL 执行失败，请修正
+
+  **失败的 SQL:**
+  ```sql
+  {failed_sql}
+  ```
+
+  **错误信息:**
+  {error_message}
+
+  请分析错误原因，使用工具重新确认表结构，然后生成正确的 SQL。
+  常见问题:
+  - 列名或表名拼写错误 -> 用 lookup_schema 确认
+  - 聚合函数未配合 GROUP BY
+  - WHERE 条件中使用了别名（MySQL 不支持）
+  - 日期格式不正确

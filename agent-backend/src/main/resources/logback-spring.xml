@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <!-- 引用 Spring 配置的日志路径 -->
+    <springProperty scope="context" name="LOG_PATH" source="agent.paths.log-dir"
+                    defaultValue="./data/logs/java"/>
+
+    <!-- 控制台输出 -->
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <!-- 文件输出（按日滚动） -->
+    <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>${LOG_PATH}/agent-backend.log</file>
+        <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+            <fileNamePattern>${LOG_PATH}/agent-backend.%d{yyyy-MM-dd}.log</fileNamePattern>
+            <maxHistory>30</maxHistory>
+            <totalSizeCap>1GB</totalSizeCap>
+        </rollingPolicy>
+        <encoder>
+            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <!-- 数据库 Appender（自定义，只记录 WARN 及以上） -->
+    <appender name="DB" class="com.newgen.agent.logging.DbLogAppender"/>
+
+    <!-- 异步包装数据库 Appender，防止阻塞 -->
+    <appender name="ASYNC_DB" class="ch.qos.logback.classic.AsyncAppender">
+        <appender-ref ref="DB"/>
+        <queueSize>256</queueSize>
+        <discardingThreshold>0</discardingThreshold>
+        <includeCallerData>false</includeCallerData>
+    </appender>
+
+    <!-- 降低 Hibernate/Spring 框架的日志级别 -->
+    <logger name="org.hibernate" level="WARN"/>
+    <logger name="org.springframework" level="WARN"/>
+    <logger name="com.zaxxer.hikari" level="WARN"/>
+
+    <!-- 应用日志 -->
+    <logger name="com.newgen.agent" level="INFO"/>
+
+    <root level="INFO">
+        <appender-ref ref="CONSOLE"/>
+        <appender-ref ref="FILE"/>
+        <appender-ref ref="ASYNC_DB"/>
+    </root>
+</configuration>
