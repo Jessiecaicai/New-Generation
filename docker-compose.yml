@@ -1,0 +1,61 @@
+version: "3.9"
+services:
+  mysql:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-rootpass}
+      MYSQL_DATABASE: business_db
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./docs/init.sql:/docker-entrypoint-initdb.d/01-init.sql
+      - ./docs/sample-data.sql:/docker-entrypoint-initdb.d/02-sample.sql
+    ports:
+      - "3306:3306"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 5s
+      retries: 10
+
+  agent-python:
+    build: ./agent-python
+    environment:
+      AGENT_OLLAMA_BASE_URL: ${AGENT_OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      AGENT_LLM_MODEL: ${AGENT_LLM_MODEL:-qwen2.5:7b}
+      AGENT_DATA_ROOT: /data
+      AGENT_JAVA_BACKEND_URL: http://agent-backend:8080
+      AGENT_SERVICE_URL: http://agent-python:8000
+    volumes:
+      - agent-data:/data
+    ports:
+      - "8001:8000"
+    restart: unless-stopped
+
+  agent-backend:
+    build: ./agent-backend
+    environment:
+      AGENT_DATA_ROOT: /data
+      AGENT_SERVICE_URL: http://agent-python:8000
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/business_db
+      SPRING_DATASOURCE_USERNAME: root
+      SPRING_DATASOURCE_PASSWORD: ${MYSQL_ROOT_PASSWORD:-rootpass}
+      SPRING_META_DATASOURCE_URL: jdbc:mysql://mysql:3306/agent_meta
+    volumes:
+      - agent-data:/data
+    ports:
+      - "8080:8080"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    restart: unless-stopped
+
+  agent-frontend:
+    build: ./agent-frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - agent-backend
+    restart: unless-stopped
+
+volumes:
+  mysql-data:
+  agent-data:

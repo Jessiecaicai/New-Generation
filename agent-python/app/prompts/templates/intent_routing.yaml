@@ -1,0 +1,12 @@
+name: intent_routing
+version: "1.0"
+description: "意图路由提示词"
+template: |
+  根据用户问题判断意图类别。
+
+  可选意图:
+  {available_intents}
+
+  用户问题: {question}
+
+  返回 JSON: {{"intent": "xxx", "needs_rag": true/false, "confidence": 0.9}}
