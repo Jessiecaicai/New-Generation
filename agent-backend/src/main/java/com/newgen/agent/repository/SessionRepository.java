@@ -1,7 +1,9 @@
 package com.newgen.agent.repository;
 
+import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.newgen.agent.model.entity.Session;
-import org.springframework.data.jpa.repository.JpaRepository;
+import org.apache.ibatis.annotations.Mapper;
 
-public interface SessionRepository extends JpaRepository<Session, String> {
+@Mapper
+public interface SessionRepository extends BaseMapper<Session> {
 }

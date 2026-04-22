@@ -1,44 +1,44 @@
 package com.newgen.agent.model.entity;
 
-import jakarta.persistence.*;
+import com.baomidou.mybatisplus.annotation.FieldFill;
+import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableField;
+import com.baomidou.mybatisplus.annotation.TableId;
+import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
-import org.hibernate.annotations.CreationTimestamp;
 
 import java.time.LocalDateTime;
 
 @Data
-@Entity
-@Table(name = "knowledge_documents")
+@TableName("knowledge_documents")
 public class KnowledgeDocument {
 
-    @Id
+    @TableId(type = IdType.INPUT)
     private String id;
 
-    @Column(name = "knowledge_base_id", nullable = false)
+    @TableField("knowledge_base_id")
     private String knowledgeBaseId;
 
-    @Column(name = "file_name", nullable = false)
+    @TableField("file_name")
     private String fileName;
 
-    @Column(name = "file_path", nullable = false)
+    @TableField("file_path")
     private String filePath;
 
-    @Column(name = "file_size")
+    @TableField("file_size")
     private Long fileSize;
 
-    @Column(name = "file_type")
+    @TableField("file_type")
     private String fileType;
 
-    @Column(name = "chunk_count")
+    @TableField("chunk_count")
     private Integer chunkCount = 0;
 
-    @Column(nullable = false)
     private String status = "PENDING";
 
-    @Column(name = "error_message", columnDefinition = "TEXT")
+    @TableField("error_message")
     private String errorMessage;
 
-    @CreationTimestamp
-    @Column(name = "created_at", updatable = false)
+    @TableField(value = "created_at", fill = FieldFill.INSERT)
     private LocalDateTime createdAt;
 }

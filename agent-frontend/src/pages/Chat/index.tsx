@@ -16,19 +16,50 @@ interface ChatMessage {
   content: string;
   intent?: string;
   sql?: string;
+  displaySql?: string;
   queryResults?: { columns: string[]; rows: Record<string, any>[]; rowCount: number };
   ragSources?: { text: string; source: string; score: number }[];
   loading?: boolean;
 }
 
+const MESSAGES_KEY = 'chat:messages';
+const SESSION_KEY = 'chat:sessionId';
+
+const loadMessages = (): ChatMessage[] => {
+  try {
+    const raw = localStorage.getItem(MESSAGES_KEY);
+    if (!raw) return [];
+    const arr = JSON.parse(raw) as ChatMessage[];
+    // 清掉上次卸载时还卡在 loading 的气泡
+    return arr.map((m) => ({ ...m, loading: false }));
+  } catch {
+    return [];
+  }
+};
+
+const loadSessionId = (): string => {
+  const existing = localStorage.getItem(SESSION_KEY);
+  if (existing) return existing;
+  const fresh = crypto.randomUUID();
+  localStorage.setItem(SESSION_KEY, fresh);
+  return fresh;
+};
+
 const ChatPage: React.FC = () => {
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [messages, setMessages] = useState<ChatMessage[]>(loadMessages);
   const [inputValue, setInputValue] = useState('');
   const [loading, setLoading] = useState(false);
   const [statusText, setStatusText] = useState('');
-  const [sessionId] = useState(() => crypto.randomUUID());
+  const [sessionId] = useState(loadSessionId);
   const [errorCount, setErrorCount] = useState(0);
   const listRef = useRef<HTMLDivElement>(null);
+
+  // Persist messages to localStorage whenever they change
+  useEffect(() => {
+    try {
+      localStorage.setItem(MESSAGES_KEY, JSON.stringify(messages));
+    } catch { /* quota or serialization issue – ignore */ }
+  }, [messages]);
 
   // Scroll to bottom
   useEffect(() => {
@@ -86,6 +117,7 @@ const ChatPage: React.FC = () => {
                       content: task.result!.answer,
                       intent: task.result!.intent,
                       sql: task.result!.sql,
+                      displaySql: task.result!.displaySql,
                       queryResults: task.result!.queryResults,
                       ragSources: task.result!.ragSources,
                       loading: false,
@@ -173,7 +205,11 @@ const ChatPage: React.FC = () => {
             <div key={msg.id}>
               <MessageBubble role={msg.role} content={msg.content} loading={msg.loading} />
               {msg.sql && msg.queryResults && (
-                <SqlResultCard sql={msg.sql} queryResults={msg.queryResults} />
+                <SqlResultCard
+                  sql={msg.sql}
+                  displaySql={msg.displaySql}
+                  queryResults={msg.queryResults}
+                />
               )}
               {msg.ragSources && msg.ragSources.length > 0 && (
                 <KnowledgeCard sources={msg.ragSources} />
@@ -216,7 +252,12 @@ const ChatPage: React.FC = () => {
             </Button>
             <Button
               icon={<ClearOutlined />}
-              onClick={() => setMessages([])}
+              onClick={() => {
+                setMessages([]);
+                // 清空时也重置 sessionId，开启新会话
+                localStorage.removeItem(MESSAGES_KEY);
+                localStorage.removeItem(SESSION_KEY);
+              }}
               size="small"
               disabled={loading}
             >

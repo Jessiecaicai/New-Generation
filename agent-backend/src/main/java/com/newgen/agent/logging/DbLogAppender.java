@@ -15,7 +15,7 @@ import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 
 /**
- * 自定义 Logback Appender：将 WARN/ERROR/FATAL 级别日志写入数据库。
+ * 自定义 Logback Appender：将 ERROR/FATAL 级别日志写入数据库。
  * 使用异步队列避免阻塞主线程。
  */
 public class DbLogAppender extends AppenderBase<ILoggingEvent> {
@@ -56,7 +56,7 @@ public class DbLogAppender extends AppenderBase<ILoggingEvent> {
     @Override
     protected void append(ILoggingEvent event) {
         // 只记录 WARN 及以上
-        if (event.getLevel().toInt() < ch.qos.logback.classic.Level.WARN_INT) {
+        if (event.getLevel().toInt() < ch.qos.logback.classic.Level.ERROR_INT) {
             return;
         }
 
@@ -108,7 +108,7 @@ public class DbLogAppender extends AppenderBase<ILoggingEvent> {
                 SystemLog log = queue.take(); // 阻塞等待
                 ensureRepository();
                 if (logRepository != null) {
-                    logRepository.save(log);
+                    logRepository.insert(log);
                 }
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
@@ -131,7 +131,7 @@ public class DbLogAppender extends AppenderBase<ILoggingEvent> {
         SystemLog log;
         while ((log = queue.poll()) != null) {
             try {
-                logRepository.save(log);
+                logRepository.insert(log);
             } catch (Exception ignored) {
             }
         }

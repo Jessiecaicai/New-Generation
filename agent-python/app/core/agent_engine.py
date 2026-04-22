@@ -3,6 +3,7 @@ import asyncio
 import logging
 import re
 from typing import Optional, List
+from langchain_openai import ChatOpenAI
 from langchain_ollama import ChatOllama
 from langchain.agents import AgentExecutor, create_tool_calling_agent
 from langchain_core.messages import HumanMessage, AIMessage
@@ -33,11 +34,27 @@ class AgentEngine:
 
     def __init__(self):
         cfg = get_config()
-        self.llm = ChatOllama(
-            model=cfg.llm_model,
-            temperature=cfg.llm_temperature,
-            base_url=cfg.ollama_base_url,
-        )
+        if cfg.llm_provider == "deepseek":
+            if not cfg.deepseek_api_key:
+                raise RuntimeError(
+                    "AGENT_DEEPSEEK_API_KEY is not set. "
+                    "Get one at https://platform.deepseek.com/api_keys"
+                )
+            self.llm = ChatOpenAI(
+                model=cfg.deepseek_model,
+                temperature=cfg.llm_temperature,
+                api_key=cfg.deepseek_api_key,
+                base_url=cfg.deepseek_base_url,
+                timeout=120,
+            )
+            logger.info(f"LLM: DeepSeek ({cfg.deepseek_model})")
+        else:
+            self.llm = ChatOllama(
+                model=cfg.ollama_model,
+                temperature=cfg.llm_temperature,
+                base_url=cfg.ollama_base_url,
+            )
+            logger.info(f"LLM: Ollama ({cfg.ollama_model})")
         self.intent_recognizer = IntentRecognizer(self.llm)
         self.rag_retriever = RAGRetriever(VectorStoreManager())
         self.context_assembler = ContextAssembler()
@@ -116,12 +133,15 @@ class AgentEngine:
                 answer = resp.content
 
             # 6. Extract SQL for nl2sql
-            sql = self._extract_sql(answer) if intent == "nl2sql" else None
+            sql, display_sql = (None, None)
+            if intent == "nl2sql":
+                sql, display_sql = self._extract_sqls(answer)
 
             return ChatResponse(
                 answer=answer,
                 intent=intent,
                 sql=sql,
+                display_sql=display_sql,
                 rag_sources=rag_sources or None,
                 confidence=0.9,
             )
@@ -145,13 +165,46 @@ class AgentEngine:
         return msgs
 
     @staticmethod
-    def _extract_sql(text: str) -> Optional[str]:
-        match = re.search(r"```sql\s*(.*?)\s*```", text, re.DOTALL | re.IGNORECASE)
-        if match:
-            return match.group(1).strip()
-        match = re.search(r"(SELECT\s+.+?;)", text, re.DOTALL | re.IGNORECASE)
-        if match:
-            return match.group(1).strip()
+    def _extract_sqls(text: str) -> tuple[Optional[str], Optional[str]]:
+        """
+        Returns (standard_sql, display_sql).
+        标准 SQL = 用于执行（纯英文字段）
+        直观 SQL = 给用户看（带中文别名）
+        """
+        # 优先：按 "标准 SQL" / "直观 SQL" 标题定位代码块
+        std = AgentEngine._extract_labeled_sql(text, ["标准 SQL", "标准SQL", "Standard SQL"])
+        disp = AgentEngine._extract_labeled_sql(text, ["直观 SQL", "直观SQL", "Readable SQL", "友好 SQL"])
+
+        # 兜底：抓所有 ```sql 代码块；第一段当标准，第二段当直观
+        if std is None or disp is None:
+            blocks = re.findall(r"```sql\s*(.*?)\s*```", text, re.DOTALL | re.IGNORECASE)
+            if blocks:
+                if std is None:
+                    std = blocks[0].strip()
+                if disp is None and len(blocks) >= 2:
+                    disp = blocks[1].strip()
+
+        # 再兜底：裸 SELECT
+        if std is None:
+            m = re.search(r"(SELECT\s+.+?;)", text, re.DOTALL | re.IGNORECASE)
+            if m:
+                std = m.group(1).strip()
+
+        # 如果只解出一份，用同一份兜底另一份
+        if std and not disp:
+            disp = std
+        if disp and not std:
+            std = disp
+
+        return std, disp
+
+    @staticmethod
+    def _extract_labeled_sql(text: str, labels: list) -> Optional[str]:
+        for lbl in labels:
+            pattern = re.escape(lbl) + r".*?```sql\s*(.*?)\s*```"
+            m = re.search(pattern, text, re.DOTALL | re.IGNORECASE)
+            if m:
+                return m.group(1).strip()
         return None
 
 

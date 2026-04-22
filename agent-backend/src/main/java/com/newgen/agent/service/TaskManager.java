@@ -1,5 +1,6 @@
 package com.newgen.agent.service;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.newgen.agent.model.dto.ChatRequestDto;
 import com.newgen.agent.model.dto.ChatResponseDto;
@@ -45,8 +46,10 @@ public class TaskManager {
         task.setSessionId(sessionId);
         task.setQuestion(request.getQuestion());
         task.setStatus(TaskStatus.QUEUED);
-        task.setQueuePosition((int) taskRepo.countByStatus(TaskStatus.QUEUED));
-        taskRepo.save(task);
+        Long queuedCount = taskRepo.selectCount(
+                new LambdaQueryWrapper<Task>().eq(Task::getStatus, TaskStatus.QUEUED));
+        task.setQueuePosition(queuedCount.intValue());
+        taskRepo.insert(task);
 
         TaskDto dto = TaskDto.builder()
                 .taskId(taskId)
@@ -81,12 +84,12 @@ public class TaskManager {
     }
 
     private String ensureSession(String sessionId) {
-        if (sessionId != null && !sessionId.isBlank() && sessionRepo.existsById(sessionId)) {
+        if (sessionId != null && !sessionId.isBlank() && sessionRepo.selectById(sessionId) != null) {
             return sessionId;
         }
         Session session = new Session();
         session.setId(sessionId != null && !sessionId.isBlank() ? sessionId : UUID.randomUUID().toString());
-        sessionRepo.save(session);
+        sessionRepo.insert(session);
         return session.getId();
     }
 
@@ -96,13 +99,16 @@ public class TaskManager {
             return cached;
         }
         // Fall back to DB
-        return taskRepo.findById(taskId).map(t -> TaskDto.builder()
+        Task t = taskRepo.selectById(taskId);
+        if (t == null) {
+            return TaskDto.builder().taskId(taskId).status("NOT_FOUND").build();
+        }
+        return TaskDto.builder()
                 .taskId(t.getId())
                 .status(t.getStatus().name())
                 .queuePosition(t.getQueuePosition())
                 .error(t.getErrorMessage())
-                .build()
-        ).orElse(TaskDto.builder().taskId(taskId).status("NOT_FOUND").build());
+                .build();
     }
 
     private void updateStatus(String taskId, String status, ChatResponseDto result, String error) {
@@ -115,25 +121,27 @@ public class TaskManager {
         taskCache.put(taskId, dto);
 
         try {
-            taskRepo.findById(taskId).ifPresent(task -> {
-                task.setStatus(TaskStatus.valueOf(status));
-                task.setErrorMessage(error);
-                if ("PROCESSING".equals(status)) {
-                    task.setStartedAt(LocalDateTime.now());
-                }
-                if ("SUCCESS".equals(status) || "ERROR".equals(status)) {
-                    task.setCompletedAt(LocalDateTime.now());
-                    if (result != null) {
-                        try {
-                            task.setResult(objectMapper.writeValueAsString(result));
-                            task.setIntent(result.getIntent());
-                        } catch (Exception e) {
-                            log.warn("Failed to serialize result: {}", e.getMessage());
-                        }
+            Task task = taskRepo.selectById(taskId);
+            if (task == null) {
+                return;
+            }
+            task.setStatus(TaskStatus.valueOf(status));
+            task.setErrorMessage(error);
+            if ("PROCESSING".equals(status)) {
+                task.setStartedAt(LocalDateTime.now());
+            }
+            if ("SUCCESS".equals(status) || "ERROR".equals(status)) {
+                task.setCompletedAt(LocalDateTime.now());
+                if (result != null) {
+                    try {
+                        task.setResult(objectMapper.writeValueAsString(result));
+                        task.setIntent(result.getIntent());
+                    } catch (Exception e) {
+                        log.warn("Failed to serialize result: {}", e.getMessage());
                     }
                 }
-                taskRepo.save(task);
-            });
+            }
+            taskRepo.updateById(task);
         } catch (Exception e) {
             log.error("Failed to update task in DB: {}", e.getMessage());
         }

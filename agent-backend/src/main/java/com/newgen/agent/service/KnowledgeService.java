@@ -1,5 +1,6 @@
 package com.newgen.agent.service;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.newgen.agent.config.PathConfig;
 import com.newgen.agent.model.entity.KnowledgeBase;
 import com.newgen.agent.model.entity.KnowledgeDocument;
@@ -35,12 +36,15 @@ public class KnowledgeService {
         kb.setId(UUID.randomUUID().toString());
         kb.setName(name);
         kb.setDescription(description);
-        return kbRepo.save(kb);
+        kbRepo.insert(kb);
+        return kb;
     }
 
     public Map<String, Object> uploadDocument(String kbId, MultipartFile file) throws IOException {
-        KnowledgeBase kb = kbRepo.findById(kbId)
-                .orElseThrow(() -> new RuntimeException("知识库不存在: " + kbId));
+        KnowledgeBase kb = kbRepo.selectById(kbId);
+        if (kb == null) {
+            throw new RuntimeException("知识库不存在: " + kbId);
+        }
 
         // Save file
         Path uploadDir = Paths.get(pathConfig.getKnowledgeUploadDir(), kbId);
@@ -56,7 +60,7 @@ public class KnowledgeService {
         doc.setFilePath(filePath.toString());
         doc.setFileSize(file.getSize());
         doc.setFileType(getFileExtension(file.getOriginalFilename()));
-        docRepo.save(doc);
+        docRepo.insert(doc);
 
         // Call Python to index
         try {
@@ -73,36 +77,39 @@ public class KnowledgeService {
                 int chunks = (int) result.get("total_chunks");
                 doc.setChunkCount(chunks);
                 doc.setStatus("INDEXED");
-                docRepo.save(doc);
+                docRepo.updateById(doc);
 
                 kb.setDocumentCount(kb.getDocumentCount() + 1);
                 kb.setChunkCount(kb.getChunkCount() + chunks);
-                kbRepo.save(kb);
+                kbRepo.updateById(kb);
             }
             return result != null ? result : Map.of("status", "indexed");
 
         } catch (Exception e) {
             doc.setStatus("ERROR");
             doc.setErrorMessage(e.getMessage());
-            docRepo.save(doc);
+            docRepo.updateById(doc);
             throw new RuntimeException("索引失败: " + e.getMessage());
         }
     }
 
     public void deleteKnowledgeBase(String id) {
-        KnowledgeBase kb = kbRepo.findById(id)
-                .orElseThrow(() -> new RuntimeException("知识库不存在: " + id));
+        KnowledgeBase kb = kbRepo.selectById(id);
+        if (kb == null) {
+            throw new RuntimeException("知识库不存在: " + id);
+        }
         try {
             restTemplate.delete(agentServiceUrl + "/knowledge/" + kb.getName());
         } catch (Exception e) {
             log.warn("Failed to delete vector index: {}", e.getMessage());
         }
-        docRepo.findByKnowledgeBaseId(id).forEach(docRepo::delete);
-        kbRepo.delete(kb);
+        docRepo.delete(new LambdaQueryWrapper<KnowledgeDocument>()
+                .eq(KnowledgeDocument::getKnowledgeBaseId, id));
+        kbRepo.deleteById(id);
     }
 
     public List<KnowledgeBase> listKnowledgeBases() {
-        return kbRepo.findAll();
+        return kbRepo.selectList(null);
     }
 
     private String getFileExtension(String filename) {

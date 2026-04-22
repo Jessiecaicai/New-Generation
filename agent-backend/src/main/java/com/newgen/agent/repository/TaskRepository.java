@@ -1,12 +1,9 @@
 package com.newgen.agent.repository;
 
+import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.newgen.agent.model.entity.Task;
-import com.newgen.agent.model.enums.TaskStatus;
-import org.springframework.data.jpa.repository.JpaRepository;
+import org.apache.ibatis.annotations.Mapper;
 
-import java.util.List;
-
-public interface TaskRepository extends JpaRepository<Task, String> {
-    List<Task> findByStatus(TaskStatus status);
-    long countByStatus(TaskStatus status);
+@Mapper
+public interface TaskRepository extends BaseMapper<Task> {
 }

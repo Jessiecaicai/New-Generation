@@ -1,10 +1,9 @@
 package com.newgen.agent.repository;
 
+import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.newgen.agent.model.entity.ChatHistory;
-import org.springframework.data.jpa.repository.JpaRepository;
+import org.apache.ibatis.annotations.Mapper;
 
-import java.util.List;
-
-public interface ChatHistoryRepository extends JpaRepository<ChatHistory, String> {
-    List<ChatHistory> findBySessionIdOrderByCreatedAtDesc(String sessionId);
+@Mapper
+public interface ChatHistoryRepository extends BaseMapper<ChatHistory> {
 }

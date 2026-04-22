@@ -1,10 +1,9 @@
 package com.newgen.agent.repository;
 
+import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.newgen.agent.model.entity.KnowledgeDocument;
-import org.springframework.data.jpa.repository.JpaRepository;
+import org.apache.ibatis.annotations.Mapper;
 
-import java.util.List;
-
-public interface KnowledgeDocumentRepository extends JpaRepository<KnowledgeDocument, String> {
-    List<KnowledgeDocument> findByKnowledgeBaseId(String knowledgeBaseId);
+@Mapper
+public interface KnowledgeDocumentRepository extends BaseMapper<KnowledgeDocument> {
 }
