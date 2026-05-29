@@ -12,7 +12,6 @@ public class AgentRequestDto {
     private String question;
     private Map<String, Object> schema;
     private List<Map<String, String>> conversationHistory;
-    private List<String> knowledgeBases;
     private Map<String, String> errorContext;
     private String intentHint;
 }

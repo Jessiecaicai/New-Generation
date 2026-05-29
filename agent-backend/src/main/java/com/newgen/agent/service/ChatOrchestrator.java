@@ -38,7 +38,6 @@ public class ChatOrchestrator {
                 .question(request.getQuestion())
                 .schema(schemaMap)
                 .conversationHistory(request.getConversationHistory())
-                .knowledgeBases(request.getKnowledgeBases())
                 .intentHint(request.getIntentHint())
                 .build();
 
@@ -72,7 +71,6 @@ public class ChatOrchestrator {
                 .sql(finalSql)
                 .displaySql(agentResp.getDisplaySql())
                 .queryResults(queryResults)
-                .ragSources(agentResp.getRagSources())
                 .confidence(agentResp.getConfidence())
                 .build();
     }

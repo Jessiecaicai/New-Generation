@@ -25,19 +25,7 @@ class AppConfig(BaseSettings):
 
     # --- Paths ---
     data_root: Path = Path("/data")
-    knowledge_upload_dir: Optional[Path] = None
-    knowledge_processed_dir: Optional[Path] = None
-    knowledge_upload_temp_dir: Optional[Path] = None
-    vectordb_dir: Optional[Path] = None
     log_dir: Optional[Path] = None
-    log_scan_dir: Optional[Path] = None
-    export_dir: Optional[Path] = None
-    temp_dir: Optional[Path] = None
-
-    # --- File Limits ---
-    knowledge_max_file_size_mb: int = 50
-    knowledge_allowed_extensions: str = ".pdf,.txt,.md,.docx"
-    temp_cleanup_hours: int = 24
 
     # --- Service ---
     log_level: str = "INFO"
@@ -45,19 +33,8 @@ class AppConfig(BaseSettings):
 
     def model_post_init(self, __context):
         """Derive paths from data_root if not explicitly set."""
-        defaults = {
-            "knowledge_upload_dir": self.data_root / "knowledge" / "uploads",
-            "knowledge_processed_dir": self.data_root / "knowledge" / "processed",
-            "knowledge_upload_temp_dir": self.data_root / "knowledge" / "uploads" / "temp",
-            "vectordb_dir": self.data_root / "vectordb" / "chroma",
-            "log_dir": self.data_root / "logs" / "python",
-            "log_scan_dir": self.data_root / "logs",
-            "export_dir": self.data_root / "export",
-            "temp_dir": self.data_root / "temp",
-        }
-        for field, default in defaults.items():
-            if getattr(self, field) is None:
-                setattr(self, field, default)
+        if self.log_dir is None:
+            self.log_dir = self.data_root / "logs" / "python"
 
     def ensure_dirs(self):
         """Create all configured directories on startup."""

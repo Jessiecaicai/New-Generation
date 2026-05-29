@@ -2,11 +2,10 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { PageContainer } from '@ant-design/pro-components';
 import { Input, Button, Space, Spin, Alert, message } from 'antd';
 import { SendOutlined, ClearOutlined } from '@ant-design/icons';
-import { submitChat, getTaskResult } from '@/services/chatService';
+import { submitChat } from '@/services/chatService';
 import { getLogStats } from '@/services/logService';
 import MessageBubble from './components/MessageBubble';
 import SqlResultCard from './components/SqlResultCard';
-import KnowledgeCard from './components/KnowledgeCard';
 
 const { TextArea } = Input;
 
@@ -18,7 +17,6 @@ interface ChatMessage {
   sql?: string;
   displaySql?: string;
   queryResults?: { columns: string[]; rows: Record<string, any>[]; rowCount: number };
-  ragSources?: { text: string; source: string; score: number }[];
   loading?: boolean;
 }
 
@@ -95,57 +93,26 @@ const ChatPage: React.FC = () => {
         .filter((m) => !m.loading)
         .map((m) => ({ role: m.role, content: m.content }));
 
-      // Submit task
-      const { taskId } = await submitChat({ question, sessionId, conversationHistory: history });
+      // 同步调用：直接 await 拿到最终结果（不再轮询）
       setStatusText('AI 正在思考...');
-
-      // Poll for result
-      const poll = setInterval(async () => {
-        try {
-          const task = await getTaskResult(taskId);
-          if (task.status === 'PROCESSING') {
-            setStatusText('AI 正在分析您的问题...');
-          } else if (task.status === 'QUEUED') {
-            setStatusText(`排队中，前方还有 ${task.queuePosition || 0} 个查询...`);
-          } else if (task.status === 'SUCCESS' && task.result) {
-            clearInterval(poll);
-            setMessages((prev) =>
-              prev.map((m) =>
-                m.id === assistantMsg.id
-                  ? {
-                      ...m,
-                      content: task.result!.answer,
-                      intent: task.result!.intent,
-                      sql: task.result!.sql,
-                      displaySql: task.result!.displaySql,
-                      queryResults: task.result!.queryResults,
-                      ragSources: task.result!.ragSources,
-                      loading: false,
-                    }
-                  : m,
-              ),
-            );
-            setLoading(false);
-            setStatusText('');
-          } else if (task.status === 'ERROR') {
-            clearInterval(poll);
-            setMessages((prev) =>
-              prev.map((m) =>
-                m.id === assistantMsg.id
-                  ? { ...m, content: `错误: ${task.error || '未知错误'}`, loading: false }
-                  : m,
-              ),
-            );
-            setLoading(false);
-            setStatusText('');
-            message.error(task.error || '处理失败');
-          }
-        } catch (e) {
-          clearInterval(poll);
-          setLoading(false);
-          setStatusText('');
-        }
-      }, 1500);
+      const result = await submitChat({ question, sessionId, conversationHistory: history });
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === assistantMsg.id
+            ? {
+                ...m,
+                content: result.answer,
+                intent: result.intent,
+                sql: result.sql,
+                displaySql: result.displaySql,
+                queryResults: result.queryResults,
+                loading: false,
+              }
+            : m,
+        ),
+      );
+      setLoading(false);
+      setStatusText('');
 
       // Timeout after 2 minutes
       setTimeout(() => {
@@ -210,9 +177,6 @@ const ChatPage: React.FC = () => {
                   displaySql={msg.displaySql}
                   queryResults={msg.queryResults}
                 />
-              )}
-              {msg.ragSources && msg.ragSources.length > 0 && (
-                <KnowledgeCard sources={msg.ragSources} />
               )}
             </div>
           ))}

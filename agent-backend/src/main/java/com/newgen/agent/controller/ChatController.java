@@ -1,26 +1,25 @@
 package com.newgen.agent.controller;
 
 import com.newgen.agent.model.dto.ChatRequestDto;
-import com.newgen.agent.model.dto.TaskDto;
-import com.newgen.agent.service.TaskManager;
+import com.newgen.agent.model.dto.ChatResponseDto;
+import com.newgen.agent.service.ChatOrchestrator;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
+/**
+ * 对话入口 —— 同步处理，直接返回结果。
+ * 简化版（去掉了任务队列 + 轮询机制）。
+ */
 @RestController
 @RequestMapping("/api")
 public class ChatController {
 
     @Autowired
-    private TaskManager taskManager;
+    private ChatOrchestrator orchestrator;
 
     @PostMapping("/chat")
-    public TaskDto submitChat(@Valid @RequestBody ChatRequestDto request) {
-        return taskManager.submitTask(request);
-    }
-
-    @GetMapping("/tasks/{taskId}")
-    public TaskDto getTask(@PathVariable String taskId) {
-        return taskManager.getTask(taskId);
+    public ChatResponseDto chat(@Valid @RequestBody ChatRequestDto request) {
+        return orchestrator.processChat(request);
     }
 }
