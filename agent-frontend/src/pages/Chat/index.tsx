@@ -113,16 +113,6 @@ const ChatPage: React.FC = () => {
       );
       setLoading(false);
       setStatusText('');
-
-      // Timeout after 2 minutes
-      setTimeout(() => {
-        clearInterval(poll);
-        if (loading) {
-          setLoading(false);
-          setStatusText('');
-          message.warning('请求超时');
-        }
-      }, 120000);
     } catch (e: any) {
       setMessages((prev) =>
         prev.map((m) =>

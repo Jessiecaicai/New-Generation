@@ -351,6 +351,55 @@ GET /api/logs/stats?hours=24
 
 ---
 
+## 🔌 MCP Server 集成（亮点功能）
+
+除了自家 Agent 内部使用 Skill,本项目还提供了 **独立的 MCP server**,把 NL2SQL 能力按 [Model Context Protocol](https://modelcontextprotocol.io/) 标准暴露,让 **Claude Desktop / Cursor / Cline** 等任意 MCP client 都能直接调用。
+
+```
+        ┌── NL2SQL 工具核心(同一份实现)──┐
+        └───────────┬───────────────────┘
+                    │
+        ┌───────────┼────────────┐
+        ▼                        ▼
+[LangChain @tool 装饰]   [MCP server (Node/TS)]
+        │                        │
+        ▼                        ▼
+┌──────────────────┐    ┌──────────────────────┐
+│ 自家 AgentEngine │    │ MCP 协议 (stdio)     │
+│ 进程内调用       │    │ 跨进程标准协议       │
+└──────────────────┘    └──────────┬───────────┘
+                                    │
+                                    ▼
+                        Claude Desktop / Cursor /
+                        其他 MCP client
+
+```
+
+**位置**: [`mcp-servers/nl2sql-server/`](mcp-servers/nl2sql-server)
+
+**提供 5 个工具**: `list_tables` · `lookup_schema` · `sample_data` · `validate_sql` · `execute_select_sql`
+
+**接入方式**(Claude Desktop 配置文件):
+```json
+{
+  "mcpServers": {
+    "nl2sql": {
+      "command": "node",
+      "args": ["/path/to/mcp-servers/nl2sql-server/build/index.js"],
+      "env": { "MYSQL_PASSWORD": "your_password" }
+    }
+  }
+}
+```
+
+→ Claude Desktop 重启后,锤子图标里会出现你的 5 个工具,直接用自然语言查数据库即可。
+
+**架构意义**: 这不是"替代 Agent",而是"协议级能力开放"——**同一份工具实现,两种协议暴露**:
+- 自家 Agent 内部用 **LangChain `@tool`**(纳秒级进程内调用)
+- 外部 client 用 **MCP server**(标准协议,跨进程/跨语言/可复用)
+
+---
+
 ## 🚧 已知限制 & 后续可扩展方向
 
 - **暂不支持多轮 SQL 上下文记忆**(单轮 question 完整)
@@ -363,6 +412,7 @@ GET /api/logs/stats?hours=24
 
 ## 📚 相关文档
 
+- [面试问答整理](docs/interview-qa.md) - MCP / LangChain / Skill / Prompt 等高频问题 + 面试话术
 - [示例 SQL 数据](docs/sample-data.sql) - 业务数据库初始化
 - [数据库 Schema](docs/init.sql) - 元数据库表结构
 
