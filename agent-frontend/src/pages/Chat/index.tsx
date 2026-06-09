@@ -2,11 +2,10 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { PageContainer } from '@ant-design/pro-components';
 import { Input, Button, Space, Spin, Alert, message } from 'antd';
 import { SendOutlined, ClearOutlined } from '@ant-design/icons';
-import { submitChat, getTaskResult } from '@/services/chatService';
+import { submitChat } from '@/services/chatService';
 import { getLogStats } from '@/services/logService';
 import MessageBubble from './components/MessageBubble';
 import SqlResultCard from './components/SqlResultCard';
-import KnowledgeCard from './components/KnowledgeCard';
 
 const { TextArea } = Input;
 
@@ -16,19 +15,49 @@ interface ChatMessage {
   content: string;
   intent?: string;
   sql?: string;
+  displaySql?: string;
   queryResults?: { columns: string[]; rows: Record<string, any>[]; rowCount: number };
-  ragSources?: { text: string; source: string; score: number }[];
   loading?: boolean;
 }
 
+const MESSAGES_KEY = 'chat:messages';
+const SESSION_KEY = 'chat:sessionId';
+
+const loadMessages = (): ChatMessage[] => {
+  try {
+    const raw = localStorage.getItem(MESSAGES_KEY);
+    if (!raw) return [];
+    const arr = JSON.parse(raw) as ChatMessage[];
+    // 清掉上次卸载时还卡在 loading 的气泡
+    return arr.map((m) => ({ ...m, loading: false }));
+  } catch {
+    return [];
+  }
+};
+
+const loadSessionId = (): string => {
+  const existing = localStorage.getItem(SESSION_KEY);
+  if (existing) return existing;
+  const fresh = crypto.randomUUID();
+  localStorage.setItem(SESSION_KEY, fresh);
+  return fresh;
+};
+
 const ChatPage: React.FC = () => {
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [messages, setMessages] = useState<ChatMessage[]>(loadMessages);
   const [inputValue, setInputValue] = useState('');
   const [loading, setLoading] = useState(false);
   const [statusText, setStatusText] = useState('');
-  const [sessionId] = useState(() => crypto.randomUUID());
+  const [sessionId] = useState(loadSessionId);
   const [errorCount, setErrorCount] = useState(0);
   const listRef = useRef<HTMLDivElement>(null);
+
+  // Persist messages to localStorage whenever they change
+  useEffect(() => {
+    try {
+      localStorage.setItem(MESSAGES_KEY, JSON.stringify(messages));
+    } catch { /* quota or serialization issue – ignore */ }
+  }, [messages]);
 
   // Scroll to bottom
   useEffect(() => {
@@ -64,66 +93,26 @@ const ChatPage: React.FC = () => {
         .filter((m) => !m.loading)
         .map((m) => ({ role: m.role, content: m.content }));
 
-      // Submit task
-      const { taskId } = await submitChat({ question, sessionId, conversationHistory: history });
+      // 同步调用：直接 await 拿到最终结果（不再轮询）
       setStatusText('AI 正在思考...');
-
-      // Poll for result
-      const poll = setInterval(async () => {
-        try {
-          const task = await getTaskResult(taskId);
-          if (task.status === 'PROCESSING') {
-            setStatusText('AI 正在分析您的问题...');
-          } else if (task.status === 'QUEUED') {
-            setStatusText(`排队中，前方还有 ${task.queuePosition || 0} 个查询...`);
-          } else if (task.status === 'SUCCESS' && task.result) {
-            clearInterval(poll);
-            setMessages((prev) =>
-              prev.map((m) =>
-                m.id === assistantMsg.id
-                  ? {
-                      ...m,
-                      content: task.result!.answer,
-                      intent: task.result!.intent,
-                      sql: task.result!.sql,
-                      queryResults: task.result!.queryResults,
-                      ragSources: task.result!.ragSources,
-                      loading: false,
-                    }
-                  : m,
-              ),
-            );
-            setLoading(false);
-            setStatusText('');
-          } else if (task.status === 'ERROR') {
-            clearInterval(poll);
-            setMessages((prev) =>
-              prev.map((m) =>
-                m.id === assistantMsg.id
-                  ? { ...m, content: `错误: ${task.error || '未知错误'}`, loading: false }
-                  : m,
-              ),
-            );
-            setLoading(false);
-            setStatusText('');
-            message.error(task.error || '处理失败');
-          }
-        } catch (e) {
-          clearInterval(poll);
-          setLoading(false);
-          setStatusText('');
-        }
-      }, 1500);
-
-      // Timeout after 2 minutes
-      setTimeout(() => {
-        clearInterval(poll);
-        if (loading) {
-          setLoading(false);
-          setStatusText('');
-          message.warning('请求超时');
-        }
-      }, 120000);
+      const result = await submitChat({ question, sessionId, conversationHistory: history });
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === assistantMsg.id
+            ? {
+                ...m,
+                content: result.answer,
+                intent: result.intent,
+                sql: result.sql,
+                displaySql: result.displaySql,
+                queryResults: result.queryResults,
+                loading: false,
+              }
+            : m,
+        ),
+      );
+      setLoading(false);
+      setStatusText('');
     } catch (e: any) {
       setMessages((prev) =>
         prev.map((m) =>
@@ -173,10 +162,11 @@ const ChatPage: React.FC = () => {
             <div key={msg.id}>
               <MessageBubble role={msg.role} content={msg.content} loading={msg.loading} />
               {msg.sql && msg.queryResults && (
-                <SqlResultCard sql={msg.sql} queryResults={msg.queryResults} />
-              )}
-              {msg.ragSources && msg.ragSources.length > 0 && (
-                <KnowledgeCard sources={msg.ragSources} />
+                <SqlResultCard
+                  sql={msg.sql}
+                  displaySql={msg.displaySql}
+                  queryResults={msg.queryResults}
+                />
               )}
             </div>
           ))}
@@ -216,7 +206,12 @@ const ChatPage: React.FC = () => {
             </Button>
             <Button
               icon={<ClearOutlined />}
-              onClick={() => setMessages([])}
+              onClick={() => {
+                setMessages([]);
+                // 清空时也重置 sessionId，开启新会话
+                localStorage.removeItem(MESSAGES_KEY);
+                localStorage.removeItem(SESSION_KEY);
+              }}
               size="small"
               disabled={loading}
             >

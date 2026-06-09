@@ -1,49 +1,46 @@
 package com.newgen.agent.model.entity;
 
+import com.baomidou.mybatisplus.annotation.FieldFill;
+import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableField;
+import com.baomidou.mybatisplus.annotation.TableId;
+import com.baomidou.mybatisplus.annotation.TableName;
 import com.newgen.agent.model.enums.LogLevel;
-import jakarta.persistence.*;
 import lombok.Data;
-import org.hibernate.annotations.CreationTimestamp;
 
 import java.time.LocalDateTime;
 
 @Data
-@Entity
-@Table(name = "system_logs")
+@TableName("system_logs")
 public class SystemLog {
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @TableId(type = IdType.AUTO)
     private Long id;
 
-    @Column(name = "service_name", nullable = false)
+    @TableField("service_name")
     private String serviceName;
 
-    @Enumerated(EnumType.STRING)
-    @Column(name = "log_level", nullable = false)
+    @TableField("log_level")
     private LogLevel logLevel;
 
     private String category;
 
-    @Column(nullable = false, columnDefinition = "TEXT")
     private String message;
 
-    @Column(name = "stack_trace", columnDefinition = "TEXT")
+    @TableField("stack_trace")
     private String stackTrace;
 
-    @Column(name = "request_id")
+    @TableField("request_id")
     private String requestId;
 
-    @Column(name = "session_id")
+    @TableField("session_id")
     private String sessionId;
 
-    @Column(columnDefinition = "JSON")
     private String metadata;
 
-    @Column(name = "is_resolved")
+    @TableField("is_resolved")
     private Boolean isResolved = false;
 
-    @CreationTimestamp
-    @Column(name = "created_at", updatable = false)
+    @TableField(value = "created_at", fill = FieldFill.INSERT)
     private LocalDateTime createdAt;
 }

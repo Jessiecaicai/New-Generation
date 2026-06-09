@@ -28,12 +28,6 @@ export default defineConfig({
       icon: 'MessageOutlined',
     },
     {
-      name: '知识库管理',
-      path: '/knowledge',
-      component: './Knowledge',
-      icon: 'BookOutlined',
-    },
-    {
       name: '日志监控',
       path: '/logs',
       component: './LogMonitor',

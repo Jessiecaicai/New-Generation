@@ -1,36 +1,33 @@
 package com.newgen.agent.model.entity;
 
-import jakarta.persistence.*;
+import com.baomidou.mybatisplus.annotation.FieldFill;
+import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableField;
+import com.baomidou.mybatisplus.annotation.TableId;
+import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
-import org.hibernate.annotations.CreationTimestamp;
 
 import java.time.LocalDateTime;
 
 @Data
-@Entity
-@Table(name = "chat_history")
+@TableName("chat_history")
 public class ChatHistory {
 
-    @Id
+    @TableId(type = IdType.INPUT)
     private String id;
 
-    @Column(name = "session_id", nullable = false)
+    @TableField("session_id")
     private String sessionId;
 
-    @Column(nullable = false)
-    @Enumerated(EnumType.STRING)
     private Role role;
 
-    @Column(nullable = false, columnDefinition = "TEXT")
     private String content;
 
     private String intent;
 
-    @Column(columnDefinition = "JSON")
     private String metadata;
 
-    @CreationTimestamp
-    @Column(name = "created_at", updatable = false)
+    @TableField(value = "created_at", fill = FieldFill.INSERT)
     private LocalDateTime createdAt;
 
     public enum Role { USER, ASSISTANT }

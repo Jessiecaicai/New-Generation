@@ -1,30 +1,24 @@
 package com.newgen.agent.repository;
 
+import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.newgen.agent.model.entity.SystemLog;
 import com.newgen.agent.model.enums.LogLevel;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
-import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.data.jpa.repository.Query;
-import org.springframework.data.repository.query.Param;
+import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Param;
+import org.apache.ibatis.annotations.Select;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 
-public interface SystemLogRepository extends JpaRepository<SystemLog, Long> {
+@Mapper
+public interface SystemLogRepository extends BaseMapper<SystemLog> {
 
-    Page<SystemLog> findByLogLevelOrderByCreatedAtDesc(LogLevel level, Pageable pageable);
-
-    Page<SystemLog> findByIsResolvedFalseAndLogLevelInOrderByCreatedAtDesc(
-            List<LogLevel> levels, Pageable pageable);
-
-    long countByLogLevelAndCreatedAtAfter(LogLevel level, LocalDateTime after);
-
-    long countByIsResolvedFalse();
-
-    @Query("SELECT s FROM SystemLog s WHERE s.id BETWEEN :start AND :end ORDER BY s.id")
+    @Select("SELECT * FROM system_logs WHERE id BETWEEN #{start} AND #{end} ORDER BY id")
     List<SystemLog> findContext(@Param("start") Long start, @Param("end") Long end);
 
-    @Query("SELECT s.category, COUNT(s) FROM SystemLog s WHERE s.logLevel = :level AND s.createdAt > :after GROUP BY s.category")
-    List<Object[]> countByCategoryAndLevel(@Param("level") LogLevel level, @Param("after") LocalDateTime after);
+    @Select("SELECT category AS category, COUNT(*) AS cnt FROM system_logs "
+            + "WHERE log_level = #{level} AND created_at > #{after} GROUP BY category")
+    List<Map<String, Object>> countByCategoryAndLevel(@Param("level") LogLevel level,
+                                                      @Param("after") LocalDateTime after);
 }

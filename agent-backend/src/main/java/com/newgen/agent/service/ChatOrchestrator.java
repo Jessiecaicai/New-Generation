@@ -1,5 +1,6 @@
 package com.newgen.agent.service;
 
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.newgen.agent.model.dto.*;
 import com.newgen.agent.model.entity.ChatHistory;
@@ -31,14 +32,13 @@ public class ChatOrchestrator {
 
         // 2. Get schema for NL2SQL
         SchemaMetadataDto schema = schemaService.getFullSchema();
-        Map<String, Object> schemaMap = objectMapper.convertValue(schema, Map.class);
+        Map<String, Object> schemaMap = objectMapper.convertValue(schema, new TypeReference<Map<String, Object>>() {});
 
         // 3. Build agent request
         AgentRequestDto agentReq = AgentRequestDto.builder()
                 .question(request.getQuestion())
                 .schema(schemaMap)
                 .conversationHistory(request.getConversationHistory())
-                .knowledgeBases(request.getKnowledgeBases())
                 .intentHint(request.getIntentHint())
                 .build();
 
@@ -70,8 +70,8 @@ public class ChatOrchestrator {
                 .answer(agentResp.getAnswer())
                 .intent(agentResp.getIntent())
                 .sql(finalSql)
+                .displaySql(agentResp.getDisplaySql())
                 .queryResults(queryResults)
-                .ragSources(agentResp.getRagSources())
                 .confidence(agentResp.getConfidence())
                 .build();
     }
@@ -118,12 +118,12 @@ public class ChatOrchestrator {
     }
 
     private String ensureSession(String sessionId) {
-        if (sessionId != null && sessionRepo.existsById(sessionId)) {
+        if (sessionId != null && sessionRepo.selectById(sessionId) != null) {
             return sessionId;
         }
         Session session = new Session();
         session.setId(UUID.randomUUID().toString());
-        sessionRepo.save(session);
+        sessionRepo.insert(session);
         return session.getId();
     }
 
@@ -137,7 +137,7 @@ public class ChatOrchestrator {
             userMsg.setRole(ChatHistory.Role.USER);
             userMsg.setContent(question);
             userMsg.setIntent(intent);
-            chatHistoryRepo.save(userMsg);
+            chatHistoryRepo.insert(userMsg);
 
             // Save assistant message
             ChatHistory assistantMsg = new ChatHistory();
@@ -147,9 +147,12 @@ public class ChatOrchestrator {
             assistantMsg.setContent(answer);
             assistantMsg.setIntent(intent);
             if (sql != null) {
-                assistantMsg.setMetadata("{\"sql\":\"" + sql.replace("\"", "\\\"") + "\"}");
+                // 用 ObjectMapper 正规序列化，避免换行/反斜杠/引号把 JSON 打坏
+                Map<String, Object> meta = new HashMap<>();
+                meta.put("sql", sql);
+                assistantMsg.setMetadata(objectMapper.writeValueAsString(meta));
             }
-            chatHistoryRepo.save(assistantMsg);
+            chatHistoryRepo.insert(assistantMsg);
         } catch (Exception e) {
             log.error("Failed to save chat history: {}", e.getMessage());
         }

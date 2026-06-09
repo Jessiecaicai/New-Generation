@@ -3,15 +3,15 @@ from typing import Optional
 import logging
 import httpx
 from langchain_core.tools import tool
+from app.config import get_config
 
 logger = logging.getLogger(__name__)
 
-_JAVA_BASE = "http://agent-backend:8080"
-
 
 def _java_get(path: str, params: Optional[dict] = None) -> dict:
+    base = get_config().java_backend_url.rstrip("/")
     try:
-        r = httpx.get(f"{_JAVA_BASE}{path}", params=params, timeout=10.0)
+        r = httpx.get(f"{base}{path}", params=params, timeout=10.0)
         r.raise_for_status()
         return r.json()
     except Exception as e:

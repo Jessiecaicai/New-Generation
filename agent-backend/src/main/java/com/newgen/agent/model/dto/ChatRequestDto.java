@@ -14,6 +14,5 @@ public class ChatRequestDto {
 
     private String sessionId;
     private List<Map<String, String>> conversationHistory;
-    private List<String> knowledgeBases;
     private String intentHint;
 }

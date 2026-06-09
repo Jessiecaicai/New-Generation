@@ -3,7 +3,7 @@ server:
 
 spring:
   datasource:
-    url: jdbc:mysql://localhost:3306/agent_meta?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai
+    url: jdbc:mysql://localhost:3306/agent_meta?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai&useUnicode=true&characterEncoding=UTF-8&connectionCollation=utf8mb4_unicode_ci
     username: ${SPRING_DATASOURCE_USERNAME:root}
     password: ${SPRING_DATASOURCE_PASSWORD:pp0123456}
     driver-class-name: com.mysql.cj.jdbc.Driver
@@ -13,15 +13,21 @@ spring:
       connection-timeout: 5000
       max-lifetime: 600000
 
-  jpa:
-    hibernate:
-      ddl-auto: none
-    show-sql: false
-
   servlet:
     multipart:
       max-file-size: 50MB
       max-request-size: 50MB
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+    # 枚举按 name() 写入/读取（匹配 MySQL ENUM/VARCHAR）
+    default-enum-type-handler: org.apache.ibatis.type.EnumTypeHandler
+  global-config:
+    banner: false
+    db-config:
+      # 主键默认不自增（实体里按需用 @TableId(type = IdType.INPUT/AUTO) 覆盖）
+      id-type: INPUT
 
 agent:
   service:

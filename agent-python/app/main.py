@@ -8,7 +8,7 @@ from fastapi.responses import JSONResponse
 from app.config import get_config
 from app.skills import SkillRegistry
 from app.prompts import PromptManager
-from app.routers import chat_router, knowledge_router, skill_router
+from app.routers import chat_router, skill_router
 from app.middleware.exception_reporter import ExceptionReporterMiddleware
 from app.middleware.rate_limiter import RateLimiterMiddleware
 
@@ -37,7 +37,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="New-Generation Agent Service",
-    description="RAG Agent with pluggable Skills",
+    description="Multi-Skill AI Agent (ReAct + Tool Calling)",
     version="1.0.0",
     lifespan=lifespan,
 )
@@ -73,5 +73,4 @@ async def health():
 
 # Include routers
 app.include_router(chat_router.router, tags=["Chat"])
-app.include_router(knowledge_router.router, tags=["Knowledge"])
 app.include_router(skill_router.router, tags=["Skills"])

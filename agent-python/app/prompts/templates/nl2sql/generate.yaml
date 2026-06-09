@@ -1,6 +1,6 @@
 name: nl2sql_generate
-version: "1.0"
-description: "SQL 生成提示词 + few-shot 示例"
+version: "2.0"
+description: "SQL 生成提示词 + few-shot 示例（输出标准 + 直观两份 SQL）"
 template: |
   ## 数据库结构
   {schema_summary}
@@ -16,20 +16,43 @@ template: |
   - 只生成 MySQL 8.0 兼容的 SELECT 查询
   - 使用显式 JOIN 而非子查询
   - 必须包含 LIMIT（默认 100）
-  - 列别名使用中文
-  - 返回时用 ```sql ``` 代码块包裹 SQL
-  - 附带简要中文解释
+  - 字段、表名一律使用**真实英文名**，不要改名、不要改大小写
+
+  ## 输出格式（必须严格遵守）
+  先输出一段标准 SQL（供数据库执行），再输出一段直观 SQL（供用户阅读，给每个 SELECT 字段加中文别名）。两段都用 ```sql 代码块包裹，并分别以 "标准 SQL" 和 "直观 SQL" 为标题。最后附简要中文解释。
 
   ## 示例
   问: "查询所有客户的名称和联系方式"
   答:
+
+  **标准 SQL**
+  ```sql
+  SELECT name, phone, email FROM customers LIMIT 100
+  ```
+
+  **直观 SQL**
   ```sql
   SELECT name AS 客户名称, phone AS 联系电话, email AS 邮箱 FROM customers LIMIT 100
   ```
+
   该查询从 customers 表中获取所有客户的基本联系信息。
 
   问: "上个月销售额最高的前5个客户"
   答:
+
+  **标准 SQL**
+  ```sql
+  SELECT c.name, SUM(o.amount) AS total_amount
+  FROM customers c
+  JOIN orders o ON c.id = o.customer_id
+  WHERE o.order_date >= DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL 1 MONTH), '%Y-%m-01')
+    AND o.order_date < DATE_FORMAT(CURDATE(), '%Y-%m-01')
+  GROUP BY c.id, c.name
+  ORDER BY total_amount DESC
+  LIMIT 5
+  ```
+
+  **直观 SQL**
   ```sql
   SELECT c.name AS 客户名称, SUM(o.amount) AS 总销售额
   FROM customers c
@@ -40,10 +63,22 @@ template: |
   ORDER BY 总销售额 DESC
   LIMIT 5
   ```
+
   该查询关联客户表和订单表，按上月日期范围筛选，聚合计算销售额并取前5名。
 
   问: "每个类别的产品平均价格"
   答:
+
+  **标准 SQL**
+  ```sql
+  SELECT category, ROUND(AVG(price), 2) AS avg_price, COUNT(*) AS product_count
+  FROM products
+  GROUP BY category
+  ORDER BY avg_price DESC
+  LIMIT 100
+  ```
+
+  **直观 SQL**
   ```sql
   SELECT category AS 产品类别, ROUND(AVG(price), 2) AS 平均价格, COUNT(*) AS 产品数量
   FROM products
@@ -51,4 +86,5 @@ template: |
   ORDER BY 平均价格 DESC
   LIMIT 100
   ```
-  按产品类��分组，计算每个类别的平均价���和产品数量。
+
+  按产品类别分组，计算每个类别的平均价格和产品数量。
