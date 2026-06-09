@@ -1,5 +1,6 @@
 package com.newgen.agent.service;
 
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.newgen.agent.model.dto.*;
 import com.newgen.agent.model.entity.ChatHistory;
@@ -31,7 +32,7 @@ public class ChatOrchestrator {
 
         // 2. Get schema for NL2SQL
         SchemaMetadataDto schema = schemaService.getFullSchema();
-        Map<String, Object> schemaMap = objectMapper.convertValue(schema, Map.class);
+        Map<String, Object> schemaMap = objectMapper.convertValue(schema, new TypeReference<Map<String, Object>>() {});
 
         // 3. Build agent request
         AgentRequestDto agentReq = AgentRequestDto.builder()

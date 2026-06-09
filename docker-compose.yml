@@ -2,6 +2,13 @@ version: "3.9"
 services:
   mysql:
     image: mysql:8.0
+    # 强制服务端 + 客户端默认字符集为 utf8mb4，否则 entrypoint 跑 init.sql 时
+    # client/connection 默认 latin1，会把 UTF-8 字节当 latin1 字符再编码，导致中文双重编码乱码
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --init-connect=SET NAMES utf8mb4
+      - --skip-character-set-client-handshake
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-rootpass}
       MYSQL_DATABASE: business_db

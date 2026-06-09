@@ -18,6 +18,8 @@
 
     <properties>
         <java.version>17</java.version>
+        <!-- Override Spring Boot 3.2 默认的 lombok 1.18.32，避免与 JDK 17.0.19+ 不兼容 -->
+        <lombok.version>1.18.38</lombok.version>
     </properties>
 
     <dependencies>
@@ -61,6 +63,20 @@
 
     <build>
         <plugins>
+            <!-- 显式配 Lombok annotation processor，避免新 JDK 上注解处理器不自动加载 -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <configuration>
+                    <annotationProcessorPaths>
+                        <path>
+                            <groupId>org.projectlombok</groupId>
+                            <artifactId>lombok</artifactId>
+                            <version>${lombok.version}</version>
+                        </path>
+                    </annotationProcessorPaths>
+                </configuration>
+            </plugin>
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
