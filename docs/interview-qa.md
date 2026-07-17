@@ -20,7 +20,8 @@
 11. [用 Claude Code 做的项目算 Vibe Coding 吗？算 AI Agent 项目吗？用 LLM 就算 Agent 吗](#11-用-claude-code-做的项目算-vibe-coding-吗算-ai-agent-项目吗用-llm-就算-agent-吗)
 12. [手撸 ReAct 是不是就不需要 LangChain](#12-手撸-react-是不是就不需要-langchain)
 13. [JSON Schema 是什么](#13-json-schema-是什么)
-14. [附录：高频拷打题速查表](#附录高频拷打题速查表)
+14. [那个 NL2SQL MCP server 具体怎么写的？为什么用 Python 不用 TypeScript](#14-那个-nl2sql-mcp-server-具体怎么写的为什么用-python-不用-typescript)
+15. [附录：高频拷打题速查表](#附录高频拷打题速查表)
 
 ---
 
@@ -71,14 +72,38 @@ if __name__ == "__main__":
 
 ### 面试话术
 
-> "MCP 是 Anthropic 提出的让 LLM 接入外部能力的**协议规范**，不是某个具体的 API。MCP server **就是给开发者自己写的**——把任何外部资源（数据库、API、文件系统）包装成 MCP server，符合协议规范就能被 MCP client 调用。我项目当前用的是 **LangChain Tool**（同进程内函数），没必要上 MCP；如果未来要把 NL2SQL 能力对外开放，自然的升级方向就是包成 MCP server。"
+> "MCP 是 Anthropic 提出的让 LLM 接入外部能力的**协议规范**，不是某个具体的 API。MCP server **就是给开发者自己写的**——把任何外部资源（数据库、API、文件系统）包装成 MCP server，符合协议规范就能被 MCP client 调用。
+>
+> 我项目里**就有一个自己写的 NL2SQL MCP server**——用 Python + 官方 `mcp` SDK 写的，~200 行代码，暴露 5 个工具（list_tables / lookup_schema / sample_data / validate_sql / execute_select_sql），通过 stdio 协议直接给 Claude Desktop / Cursor 当工具用。**不必经过项目自家前端或 Java 后端**，任何 MCP client 都能调。"
 
 ---
 
 ## 2. "项目用 LangChain Tool 在进程内调用，没必要上 MCP" 怎么理解
 
 ### 快速答案
-**LangChain Tool 是进程内函数调用（纳秒级）**；**MCP 是跨进程协议调用（毫秒级 + 序列化开销）**。我的项目没有"工具被多个 Agent 复用"的需求，所以"进程内调用"是更经济的方案。
+**两条赛道并存，目标不同**：
+- **内部链路**用 **LangChain Tool**（进程内函数，纳秒级）—— 服务前端用户
+- **对外接口**用 **MCP server**（跨进程协议，毫秒级）—— 服务任何 MCP client
+
+不是二选一，而是"对内追求性能、对外追求生态兼容"。
+
+### 项目实际的"双轨"架构
+
+```
+              内部链路（追求性能）           对外接口（追求生态）
+              ─────────────────              ──────────────────
+              前端聊天框                      Claude Desktop / Cursor
+                  ↓                              ↓
+              Java backend                  （MCP stdio 协议）
+                  ↓ HTTP                        ↓
+              agent-python                   nl2sql-server (Python)
+                  ↓                              ↓
+              LangChain @tool                MCP @mcp.tool()
+                  ↓                              ↓
+              （同进程函数调用）              （独立进程 + JSON-RPC）
+                  ↓                              ↓
+                  └──────→ 同一个 MySQL ←─────────┘
+```
 
 ### 进程内 vs 跨进程对比
 
@@ -90,32 +115,33 @@ AgentEngine → tool_registry["lookup_schema"] → 直接 Python 函数调用 �
 
 **MCP 实际发生的事**：
 ```
-主进程 → 把参数序列化为 JSON → 通过 stdio/HTTP 发到另一个进程 → 反序列化执行 → 结果再序列化 → 写回主进程
+client → 把参数序列化为 JSON → stdio 发到 MCP server 进程 → 反序列化执行 → 结果再序列化 → 写回 client
 ```
 毫秒级，每次调用要序列化两次。
 
-### "没必要上 MCP" 的三个理由
+### 为什么内部链路不上 MCP
 
-1. **没有跨进程需求** —— 只有 FastAPI 这一个消费方
-2. **徒增性能开销** —— 一次 ReAct 推理可能调 5~10 次 tool，多 50~500ms
-3. **徒增部署复杂度** —— 多管理一个进程的生命周期、错误处理、鉴权
+1. **没有跨进程需求** —— 内部只有 agent-python 这一个消费方
+2. **徒增性能开销** —— 一次 ReAct 推理可能调 5~10 次 tool，多 50~500ms 不值
+3. **徒增部署复杂度** —— 多管理一个进程的生命周期
 
-### 什么时候才该上 MCP
+### 为什么还要单独写一个 MCP server
 
-- ✅ 工具要**对外开放**给其他 Agent / IDE 复用
-- ✅ 跨语言场景（Python 写的工具 Go Agent 想用）
-- ✅ 想发布到 MCP 社区生态
-- ✅ 需要进程级隔离（沙箱化）
+1. **对外开放** —— 让任何 MCP client（Claude Desktop / Cursor / Cline）都能复用 NL2SQL 能力
+2. **跨语言场景** —— Java / Go / Rust 写的 Agent 也能调
+3. **生态接入** —— 符合标准协议，未来可以发布到 MCP 社区生态
+4. **进程级隔离** —— sandbox 化，对外服务时崩了不影响主链路
 
 ### 生活化类比
 
 | 方案 | 类比 |
 |------|------|
-| **LangChain Tool（进程内）** | 自己家厨房，伸手就能拿调料 |
-| **MCP（跨进程）** | 调料放邻居家，每次要敲门要 |
+| **LangChain Tool（进程内）** | 自家厨房，伸手就能拿调料 |
+| **MCP（跨进程）** | 在街边开了个调料店，街坊邻居都能买 |
 
-→ 自己做一顿饭 → 当然放自家厨房
-→ 想开调料共享服务给整条街 → 才有理由搬出去
+→ 自家做饭 → 在自家厨房做（LangChain Tool）
+→ 想让街坊也能用同一份配方 → 把店开出来（MCP server）
+→ **两件事不冲突，可以同时做**
 
 ---
 
@@ -319,31 +345,43 @@ for s in active_skills:
 
 **核心结论**：项目真正依赖 LangChain 的只有 "ReAct 循环驱动" 和 "@tool 装饰器"，其他全是自己写。
 
-### 企业 MCP / Skill 改造成本
+### 企业 MCP / Skill 改造成本（基于真实数据）
 
-**改造工作量评估**：
+我们**已经写了一个 NL2SQL MCP server**作为试点，这是实测出来的数据：
 
-| 改造点 | 改动量 |
-|--------|-------|
-| NL2SQL Skill → MCP server | 中（1~2 天） |
-| LogAnalyzer Skill → MCP server | 中（1 天） |
-| AgentEngine 改接 MCP client | 中等偏大（2~3 天） |
-| 进程编排 | 小（半天） |
-| SkillRegistry → MCP 发现机制 | 中（1 天） |
-| contextvar 改造 | 中（1 天） |
-| 测试 / 文档 | 大（2~3 天） |
+| 改造点 | 实际工作量 |
+|--------|-----------|
+| NL2SQL Skill → MCP server | **1 天**（Python + `mcp` SDK，~200 行）|
+| LogAnalyzer Skill → MCP server | 预估同等量级（1 天） |
+| AgentEngine 改接 MCP client | 中等（2 天）—— 加 MCP client 层封装 |
+| 进程编排 | 小（半天）—— Claude Desktop config 一次性 |
+| SkillRegistry → MCP 发现机制 | 中（1 天）—— Skill 自动发现改为 MCP `list_tools` 调用 |
+| 测试 / 文档 | 中（1~2 天） |
 
-**合计：6~10 个工作日**
+**合计：5~7 个工作日**（比原先估的 6~10 工作日少一些，因为 SDK 比想象的成熟）
 
-### 建议路线（不全改）
+### 项目当前实际状态
 
-**阶段 1**：加抽象层 `BaseToolProvider`（1~2 天）—— 为未来切 MCP 留口子
+**双轨制（推荐做法）**：
 
-**阶段 2**：选 NL2SQL 试点 MCP 化（1 周）—— 其他 Skill 维持现状，两种模式共存
+| | 内部链路 | 对外 MCP |
+|---|---|---|
+| 代码位置 | `agent-python/app/skills/builtin/nl2sql/` | `mcp-servers/nl2sql-server/server.py` |
+| 框架 | LangChain `@tool` | MCP `@mcp.tool()` |
+| 消费方 | 项目自家前端 | Claude Desktop / Cursor / 任何 MCP client |
+| 性能 | 进程内函数（快）| stdio JSON-RPC（多一次序列化）|
+
+**有 5% 代码重复（SQL 校验、表名白名单等逻辑两边都有）**——可接受，因为两边消费场景不同，做成共享库反而过度抽象。
 
 ### 面试话术
 
-> "我项目用的是 LangChain 的 `@tool` + AgentExecutor 在单进程内组织 Agent 能力——**轻量起步**方案。MCP 是 Anthropic 的跨进程标准协议，企业里通常用它**让工具能力被多个不同的 Agent / IDE 复用**。我没用 MCP 是因为：当前消费方只有一个 FastAPI，进程内调用零开销。但**架构演进路径是清晰的**——如果要把 NL2SQL 作为平台能力开放，只需把 `@tool` 改成 `@mcp.tool()` 起独立 server。**核心 AgentEngine 流程不用动**——这是抽象设计的价值。"
+> "我项目用的是**双轨架构**：
+> - **内部链路**用 LangChain 的 `@tool` + AgentExecutor，agent-python 这个进程内函数调用，纳秒级——服务自家前端的聊天框。
+> - **对外接口**单独写了一个 **NL2SQL MCP server**——独立 Python 进程，通过 stdio + JSON-RPC，让任何 MCP client（Claude Desktop / Cursor）都能调。
+>
+> 这么做的考虑：**两条赛道目标不同**——内部追求性能（不要 50-500ms 的多轮 tool 调用开销），对外追求生态兼容（标准协议、跨语言、可被任意 client 调）。
+>
+> 实际工作量也验证了——把 NL2SQL 改造成 MCP server 大概 1 天，**核心 AgentEngine 流程没动**，体现了抽象设计的价值。"
 
 ---
 
@@ -1041,20 +1079,144 @@ OpenAI / Anthropic / DeepSeek 在训练时**让模型见过大量 JSON Schema �
 
 ---
 
+## 14. 那个 NL2SQL MCP server 具体怎么写的？为什么用 Python 不用 TypeScript
+
+### 快速答案
+
+**用 Python + 官方 `mcp` SDK 的 FastMCP，~200 行**。选 Python 是因为 ① 项目主语言就是 Python ② FastMCP 的 `@mcp.tool()` 装饰器从函数签名 + docstring 自动生成 JSON Schema，比手写 TS `inputSchema` 简洁。
+
+### 文件结构
+
+```
+mcp-servers/nl2sql-server/
+├── server.py            ← 全部逻辑在这（~200 行）
+├── requirements.txt     ← mcp + aiomysql
+├── README.md
+├── .gitignore
+└── venv/                ← 独立 venv（不和 agent-python 混用）
+```
+
+### 暴露的 5 个工具
+
+| Tool | 干啥 |
+|---|---|
+| `list_tables` | 列所有表（含注释 + 行数估算）|
+| `lookup_schema` | 查某表的列（类型 / 是否可空 / 主键 / 注释）|
+| `sample_data` | 取某表前 N 行示例数据 |
+| `validate_sql` | 校验 SQL 安全（不执行）|
+| `execute_select_sql` | 执行 SELECT + 自动 LIMIT 兜底 |
+
+### 核心代码长这样
+
+```python
+from mcp.server.fastmcp import FastMCP
+import aiomysql
+
+mcp = FastMCP("nl2sql-mcp-server")
+
+@mcp.tool()
+async def lookup_schema(table_name: str) -> str:
+    """查看指定表的详细结构（列名、类型、是否可空、主键、注释）。
+
+    Args:
+        table_name: 要查看的表名,例如 'customers' 或 'orders'
+    """
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        async with conn.cursor(aiomysql.DictCursor) as cur:
+            await cur.execute(
+                "SELECT COLUMN_NAME, COLUMN_TYPE, ... FROM information_schema.COLUMNS WHERE TABLE_NAME=%s",
+                (table_name,)
+            )
+            return format_columns(await cur.fetchall())
+
+if __name__ == "__main__":
+    mcp.run()  # 启动 stdio transport
+```
+
+**FastMCP 自动从函数做的事**：
+- **函数名 → tool name**（`lookup_schema`）
+- **docstring 第一段 → tool description**（喂给 LLM 看的）
+- **Args 部分 → 参数的 description**
+- **类型注解 (`str`, `int`) → JSON Schema 的 type 字段**
+
+写法跟 LangChain `@tool` **几乎一模一样**——这是 Anthropic 故意的，降低迁移成本。
+
+### 安全设计（4 道防线）
+
+1. **黑名单关键字**：`DROP / DELETE / UPDATE / INSERT / ALTER / TRUNCATE / CREATE / GRANT / REVOKE / REPLACE` 一旦出现直接拒绝。**用 `\b` 单词边界匹配**，避免误伤 `updated_at` 这类合法列名。
+2. **必须 SELECT 开头**（或 `WITH` 开头的 CTE）。
+3. **`sample_data` 表名白名单**：表名只允许 `[a-zA-Z_][a-zA-Z0-9_]*`，防 SQL 注入（**注：表名不能用参数化，只能字符串拼接，所以必须白名单兜底**）。
+4. **强制 LIMIT 兜底**：LLM 没写 LIMIT 时自动加 `LIMIT 100`，防全表扫描。
+
+### stdio 协议的坑
+
+MCP server 用 **stdio 协议**（不开网络端口）：
+- **stdin**：MCP client 发请求过来
+- **stdout**：server 写响应回去  ⚠️ **不能 `print()` 调试！会污染协议！**
+- **stderr**：日志只能写这里
+
+**这是初次写 MCP server 最容易踩的坑**——`print("DEBUG XXX")` 一下就让 Claude Desktop 收到非法 JSON-RPC，整个 server 直接挂。规矩是：**任何日志都 `print(..., file=sys.stderr)` 或者 `logging` 配 stderr handler**。
+
+### 接到 Claude Desktop 怎么配
+
+编辑 `~/Library/Application Support/Claude/claude_desktop_config.json`：
+
+```json
+{
+  "mcpServers": {
+    "nl2sql": {
+      "command": "/abs/path/to/venv/bin/python",
+      "args": ["/abs/path/to/server.py"],
+      "env": {
+        "MYSQL_HOST": "localhost",
+        "MYSQL_PASSWORD": "rootpass",
+        "MYSQL_DATABASE": "business_db"
+      }
+    }
+  }
+}
+```
+
+重启 Claude Desktop，左下角工具栏（🔨 锤子图标）就能看到 5 个 tool。之后直接问"业务库里有什么表"，Claude 会自动调 `list_tables`。
+
+### 为什么是 Python 不是 TypeScript（虽然官方 TS SDK 更早）
+
+**之前是 TS 版的，今年改成 Python**。理由：
+
+1. **项目主语言就是 Python**（agent-python）——技术栈统一更好维护，不用同时配 Node 和 Python
+2. **FastMCP 的开发体验更好** —— 装饰器从 docstring 自动生成 schema，TS 版要手写 `inputSchema: { type: "object", properties: {...} }` 啰嗦得多
+3. **官方 Python SDK 已经成熟** —— 当初选 TS 是因为发布最早，现在 Python SDK 功能等价
+
+### 面试话术
+
+> "我把项目的 NL2SQL 能力包装成了一个独立的 MCP server，Python 实现，用官方 `mcp` SDK 的 FastMCP API——`@mcp.tool()` 装饰器从函数签名 + docstring 自动生成 JSON Schema 喂给 LLM，写法跟 LangChain 的 `@tool` 几乎一致。
+>
+> 暴露 5 个 tool：`list_tables` / `lookup_schema` / `sample_data` / `validate_sql` / `execute_select_sql`。
+>
+> 安全上有 4 道防线——黑名单关键字校验（用单词边界匹配避免误伤合法列名）、必须 SELECT 开头、表名白名单防注入、强制 LIMIT 兜底。
+>
+> 协议用 stdio + JSON-RPC——这是 MCP 默认传输方式，最大坑是 **stdout 是协议通道不能 `print()` 调试**，日志必须走 stderr。
+>
+> 实际接到 Claude Desktop 用了一下，体验是：用户问'业务库里都有什么表'，Claude 自动调 `list_tables` → 看完表名问'orders 表长啥样'，再自动调 `lookup_schema` → 然后想看几条数据，调 `sample_data`——**完整 ReAct 循环全发生在 Claude Desktop 那一侧，我的 server 只负责执行工具**。这是 MCP 这套协议的核心价值：让任何 LLM 应用复用我的工具能力，不绑死前端。"
+
+---
+
 ## 附录：高频拷打题速查表
 
 | 话题 | 准备深度 | 核心答法 |
 |------|---------|---------|
 | **Skill 设计** | ⭐⭐⭐ | LangChain 没有 Skill，是我自己加的抽象，用 intent_tags 做路由 |
-| **MCP** | ⭐⭐⭐⭐ | 协议本质 + 什么时候用 + 项目为什么没用 + 演进路径 |
+| **MCP（协议层）** | ⭐⭐⭐⭐ | 协议本质 + 跟 LangChain Tool 是双轨不是替代关系 |
+| **MCP server 实现** | ⭐⭐⭐ | Python `mcp` SDK + FastMCP；stdio 协议；4 道安全防线；不能 `print` |
 | **Agent 流程** | ⭐⭐⭐ | 意图识别 / Skill 路由 / ReAct / max_iterations / 自纠错 |
 | **LangChain 取舍** | ⭐⭐⭐ | 有选择地用，只用 @tool + AgentExecutor，其他自己写 |
-| **JSON Schema** | ⭐⭐ | 给 LLM 看的工具说明书，@tool 自动生成 |
+| **JSON Schema** | ⭐⭐ | 给 LLM 看的工具说明书，@tool / @mcp.tool() 自动生成 |
 | **Prompt 工程** | ⭐⭐ | YAML 模板 + 热加载 + few-shot + 代码兜底 |
 | **NL2SQL 安全** | ⭐⭐⭐ | Python+Java 双层校验 + 仅 SELECT + 自纠错重试 |
 | **并发** | ⭐⭐ | uvicorn 进程 / Java Tomcat 200 线程 |
 | **MyBatis-Plus 迁移** | ⭐⭐ | 启动 27s→6s，BaseMapper + LambdaQueryWrapper |
-| **生产级 bug** | ⭐⭐⭐ | MySQL utf8 → utf8mb4 解决 emoji；404 不该当 ERROR |
+| **生产级 bug** | ⭐⭐⭐ | MySQL utf8 → utf8mb4 解决中文乱码；Lombok 跟新 JDK 不兼容；404 不该当 ERROR |
 
 ---
 
@@ -1062,8 +1224,8 @@ OpenAI / Anthropic / DeepSeek 在训练时**让模型见过大量 JSON Schema �
 
 | 岗位 | 重点讲 |
 |------|-------|
-| **AI 算法工程师** | Agent / ReAct / RAG / Prompt engineering / LLM 输出可靠性 |
-| **后端开发(含 AI 业务)** | Java 编排 / 双数据源 / MyBatis-Plus 迁移 / SQL 安全 |
-| **大模型应用工程师** | LangChain 取舍 / 意图识别 / contextvar 注入 / 自纠错 |
+| **AI 算法工程师** | Agent / ReAct / Prompt engineering / LLM 输出可靠性 / MCP 生态 |
+| **后端开发(含 AI 业务)** | Java 编排 / 双数据源 / MyBatis-Plus 迁移 / SQL 安全 / MCP server 跨进程 |
+| **大模型应用工程师** | LangChain 取舍 / MCP 双轨架构 / 意图识别 / contextvar 注入 / 自纠错 |
 | **全栈** | 加聊天 UI: "根据 intent 分发 SQL/Markdown 多种渲染" |
 | **应届校招通用岗** | 控制深度，强调 Agent 6 要素 + 架构图 |

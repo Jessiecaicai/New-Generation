@@ -34,3 +34,6 @@ data/
 Thumbs.db
 
 .claude/
+
+# 本地学习用 notebook，不进 git
+docs/notebooks/
